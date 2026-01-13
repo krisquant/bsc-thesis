@@ -4,10 +4,11 @@ import RunMap from '../components/map/RunMap'
 import { useWorkout } from '../context/WorkoutContext'
 import { useUser } from '../context/UserContext'
 import { formatDistance, formatDuration } from '../utils/calculations'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 
 const ActiveRun = () => {
   const navigate = useNavigate()
+  const location = useLocation()
   const { user } = useUser()
 
   const {
@@ -24,14 +25,23 @@ const ActiveRun = () => {
     resumeWorkout,
     finishWorkout,
     getCurrentPosition,
-    activeWorkout
+    activeWorkout,
+    resetWorkout
   } = useWorkout()
 
+  // Extract challenge ID from navigation state if present
+  const challengeId = location.state?.challengeId || null
+
+  // Cleanup when navigating away without finishing
   useEffect(() => {
-    if (!activeWorkout && !isRunning && duration === 0) {
-      // navigate('/') 
+    return () => {
+      // Only reset if there's an active workout that wasn't finished
+      // (if finished, activeWorkout would be null)
+      if (activeWorkout || isRunning || duration > 0) {
+        resetWorkout()
+      }
     }
-  }, [activeWorkout, isRunning, duration, navigate])
+  }, []) // Empty dependency array - only run on unmount
 
   const handleTogglePlay = () => {
     if (isRunning && !isPaused) {
@@ -39,7 +49,7 @@ const ActiveRun = () => {
     } else if (isPaused) {
       resumeWorkout()
     } else {
-      startWorkout()
+      startWorkout(challengeId) // Pass challengeId when starting workout
     }
   }
 

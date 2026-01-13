@@ -10,6 +10,7 @@ export const WorkoutContext = createContext(null)
 export const WorkoutProvider = ({ children }) => {
   const [workouts, setWorkouts] = useState([])
   const [activeWorkout, setActiveWorkout] = useState(null)
+  const [activeChallengeId, setActiveChallengeId] = useState(null) // Track if run is a challenge attempt
   const [isLoading, setIsLoading] = useState(true)
 
   const [isRunning, setIsRunning] = useState(false)
@@ -24,7 +25,8 @@ export const WorkoutProvider = ({ children }) => {
     error: geoError,
     startTracking,
     stopTracking,
-    getCurrentPosition
+    getCurrentPosition,
+    resetTracking
   } = useGeolocation(isRunning && !isPaused)
 
   const timerRef = useRef(null)
@@ -129,13 +131,13 @@ export const WorkoutProvider = ({ children }) => {
     return () => clearInterval(timerRef.current)
   }, [isRunning, isPaused])
 
-  const startWorkout = () => {
+  const startWorkout = (challengeId = null) => {
     const now = new Date()
     const newWorkoutId = uuidv4()
 
     const initialWorkoutData = {
       id: newWorkoutId,
-      name: `Run ${now.toLocaleDateString()} ${now.toLocaleTimeString()}`,
+      name: challengeId ? `Challenge Run ${now.toLocaleDateString()}` : `Run ${now.toLocaleDateString()} ${now.toLocaleTimeString()}`,
       startTime: now.toISOString(),
     }
 
@@ -144,6 +146,7 @@ export const WorkoutProvider = ({ children }) => {
     setIsRunning(true)
     setIsPaused(false)
     setActiveWorkout(initialWorkoutData)
+    setActiveChallengeId(challengeId) // Store challenge ID if this is a challenge run
     startTracking()
 
     return initialWorkoutData
@@ -214,15 +217,44 @@ export const WorkoutProvider = ({ children }) => {
       setWorkouts(prev => [savedWorkout, ...prev])
       setActiveWorkout(null)
 
+      // If this was a challenge run, create a challenge attempt
+      if (activeChallengeId) {
+        try {
+          const { attemptChallenge } = await import('../api/challenges');
+          await attemptChallenge(activeChallengeId, {
+            run_id: response.data.uuid
+          });
+          console.log('Challenge attempt created successfully');
+        } catch (attemptError) {
+          console.error('Failed to create challenge attempt:', attemptError);
+          // Don't fail the whole flow if attempt creation fails
+        } finally {
+          setActiveChallengeId(null) // Clear challenge ID
+        }
+      }
+
       return savedWorkout
     } catch (error) {
       console.error('Error saving run to backend:', error)
       // Fallback to local-only save
       setWorkouts(prev => [finalWorkout, ...prev])
       setActiveWorkout(null)
+      setActiveChallengeId(null) // Clear challenge ID on error
 
       return finalWorkout
     }
+  }
+
+  const resetWorkout = () => {
+    stopTracking()
+    resetTracking()
+    GeoSimulator.stop()
+    setIsRunning(false)
+    setIsPaused(false)
+    setDuration(0)
+    setHeartRateData([])
+    setActiveWorkout(null)
+    setActiveChallengeId(null)
   }
 
   const renameWorkout = async (id, newName) => {
@@ -296,7 +328,8 @@ export const WorkoutProvider = ({ children }) => {
         deleteWorkout,
         shareWorkout,
         renameWorkout,
-        getCurrentPosition
+        getCurrentPosition,
+        resetWorkout
       }}
     >
       {children}
