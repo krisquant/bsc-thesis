@@ -20,6 +20,7 @@ class LeaderboardRepository:
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
         limit: int = 50,
+        user_ids: Optional[List[UUID]] = None,
     ) -> List[dict]:
         value_expr = self._get_metric_expression(metric)
 
@@ -30,15 +31,18 @@ class LeaderboardRepository:
         if end_date:
             join_conditions.append(Run.start_time <= end_date)
 
+        query = select(
+            User.uuid.label("user_uuid"),
+            User.username,
+            value_expr.label("value"),
+            func.rank().over(order_by=desc(value_expr)).label("rank"),
+        ).outerjoin(Run, and_(*join_conditions))
+
+        if user_ids:
+            query = query.where(User.uuid.in_(user_ids))
+
         stmt = (
-            select(
-                User.uuid.label("user_uuid"),
-                User.username,
-                value_expr.label("value"),
-                func.rank().over(order_by=desc(value_expr)).label("rank"),
-            )
-            .outerjoin(Run, and_(*join_conditions))
-            .group_by(User.uuid, User.username)
+            query.group_by(User.uuid, User.username)
             .order_by(desc("value"))
             .limit(limit)
         )
@@ -52,6 +56,7 @@ class LeaderboardRepository:
         metric: LeaderboardMetric,
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
+        user_ids: Optional[List[UUID]] = None,
     ) -> Optional[dict]:
         value_expr = self._get_metric_expression(metric)
 
@@ -62,16 +67,17 @@ class LeaderboardRepository:
         if end_date:
             join_conditions.append(Run.start_time <= end_date)
 
-        subquery = (
-            select(
-                User.uuid.label("user_uuid"),
-                User.username,
-                value_expr.label("value"),
-                func.rank().over(order_by=desc(value_expr)).label("rank"),
-            )
-            .outerjoin(Run, and_(*join_conditions))
-            .group_by(User.uuid, User.username)
-        )
+        query = select(
+            User.uuid.label("user_uuid"),
+            User.username,
+            value_expr.label("value"),
+            func.rank().over(order_by=desc(value_expr)).label("rank"),
+        ).outerjoin(Run, and_(*join_conditions))
+
+        if user_ids:
+            query = query.where(User.uuid.in_(user_ids))
+
+        subquery = query.group_by(User.uuid, User.username)
 
         subquery = subquery.subquery()
 

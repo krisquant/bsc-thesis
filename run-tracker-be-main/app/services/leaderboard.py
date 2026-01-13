@@ -20,14 +20,30 @@ class LeaderboardService:
         period: LeaderboardPeriod,
         current_user_uuid: UUID,
         limit: int = 50,
+        friends_only: bool = False,
     ) -> LeaderboardResponse:
         async with uow:
             repo = LeaderboardRepository(uow.session)
             start_date = self._get_start_date(period)
 
+            user_ids = None
+            if friends_only:
+                # Fetch friends
+                friends = await uow.friendship.get_friends(current_user_uuid)
+                friend_ids = []
+                for f in friends:
+                    if str(f.requester_id) == str(current_user_uuid):
+                        friend_ids.append(UUID(str(f.addressee_id)))
+                    else:
+                        friend_ids.append(UUID(str(f.requester_id)))
+
+                # Include current user
+                friend_ids.append(current_user_uuid)
+                user_ids = friend_ids
+
             # Get top N entries
             raw_entries = await repo.get_leaderboard(
-                metric, start_date=start_date, limit=limit
+                metric, start_date=start_date, limit=limit, user_ids=user_ids
             )
 
             entries = [
@@ -53,7 +69,7 @@ class LeaderboardService:
             else:
                 # Fetch user's specific rank
                 raw_user_entry = await repo.get_user_entry(
-                    current_user_uuid, metric, start_date=start_date
+                    current_user_uuid, metric, start_date=start_date, user_ids=user_ids
                 )
                 if raw_user_entry:
                     current_user_entry = LeaderboardEntry(

@@ -17,7 +17,8 @@ async def get_leaderboard(
     uow: UnitOfWorkDep,
     metric: LeaderboardMetric = Query(LeaderboardMetric.DISTANCE),
     period: LeaderboardPeriod = Query(LeaderboardPeriod.WEEK),
+    friends_only: bool = Query(False),
 ) -> LeaderboardResponse:
     return await leaderboard_service.get_leaderboard(
-        uow, metric, period, current_user.uuid
+        uow, metric, period, current_user.uuid, friends_only=friends_only
     )
